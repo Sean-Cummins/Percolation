@@ -1,0 +1,239 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Dec 07 09:56:19 2017
+
+An implementation of the Hoshen-Koplemann Algorithm for cluster labelling a 
+grid. Cluster sizes are stored as positive values in the cluster list (csize). 
+Redirection labels are stores as negative values in the cluster list (csize).
+The grid is processed in the following manner:
+    
+    -Random_Grid_Generator : Pre-generates a square grid of length "grid_length"
+    -Raster_Scan : Scans and labels grid as per the Hoshen-Koplemann Algorithm
+    -Collpse : Collapses chain of redirection labels in csize
+    -Span_cluster_check : Checks if there exists a spanning cluster (Boolean)
+                          and returns label (cluster size in csize)
+    -run : runs all functions together in chain
+
+Included are optional 2-D histogram plots and runtime for the grid at all 
+stages of processing.
+
+@author: Sean Cummins
+"""
+
+import numpy as np
+np.set_printoptions(threshold=np.nan)
+import matplotlib.pyplot as plt
+import time
+
+#-----------------------------------------------------------------------------#
+
+#Pre-generates a a grid with a given occupation probability
+def Random_Grid_Generator(grid_length,thres_prob,plot):
+    
+    start_time = time.time()
+    grid=np.zeros((grid_length+2,grid_length+2))#add a boundary of zeros
+
+    for row in range(1,grid_length+1):      
+        for column in range(1,grid_length+1):   
+            
+            random_prob=np.random.random()
+            grid[row,column]=random_prob  
+                
+            if grid[row,column]>thres_prob:                
+                grid[row,column]=0                 
+            else:                
+                grid[row,column]=1
+    
+    if plot==True:                
+        fig, ax = plt.subplots()          
+        im=ax.imshow(grid, cmap='gist_earth', interpolation='nearest')  
+        fig.colorbar(im, orientation='vertical')
+        plt.title('Generating the random '  + str(grid_length) + 'x'+ \
+                  str(grid_length) + ' lattice of probability ' + str(prob) )
+    
+    print("Random_Grid_Generator--- %s seconds ---" % (time.time() - start_time))
+              
+    return grid
+
+#-----------------------------------------------------------------------------#
+
+#Scan grid row-by-row left-to-right
+def Raster_Scan(grid,grid_length,plot):
+
+    start_time = time.time()
+    largest_label=0.0
+    csize=[]#cluster size list
+    csize.append(0)#start indexing at 1
+    
+    for row in range(1,grid_length+1):        
+        for column in range(1,grid_length+1):            
+            if (grid[row,column]!=0.0):    
+                
+                above=int(grid[row-1,column])
+                left=int(grid[row,column-1])   
+                
+                #check neighbours
+                if (left==0) and (above==0):  
+                    
+                    largest_label=largest_label+1.0                    
+                    grid[row,column]=largest_label                        
+                    csize.append(1)  
+                     
+                if (left!=0) and (above==0):    
+                    
+                    grid[row,column]=left
+                    root_left=find(left,csize)
+                    csize[root_left]=csize[root_left]+1 
+                         
+                if (left==0) and (above!=0):    
+                    
+                    grid[row,column]=above
+                    root_above=find(above,csize)                       
+                    csize[root_above]=csize[root_above]+1  
+                                                           
+                if (left!=0) and (above!=0):      
+                    
+                    root_left=find(left,csize)
+                    root_above=find(above,csize)  
+                    
+                    if left<above:#always choose smallest label
+                    
+                        grid[row,column]=left
+                        csize[root_left]=csize[root_left]+1  
+                             
+                    if above<left:
+                        
+                        grid[row,column]=above
+                        csize[root_above]=csize[root_above]+1   
+                             
+                    if root_left<root_above: 
+                        #transfer size of cluster to proper label before making
+                        #temporary                           
+                        csize[root_left]=csize[root_left]+csize[root_above]
+                        csize[root_above]=-root_left
+                             
+                    if root_above<root_left:
+                        
+                        csize[root_above]=csize[root_above]+csize[root_left]
+                        csize[root_left]=-root_above   
+                             
+                    if left==above:   
+                        
+                        grid[row,column]=above
+                        root_above=find(above,csize)
+                        csize[root_above]=csize[root_above]+1                        
+                    
+                        
+    if plot==True:                       
+        fig, ax = plt.subplots()          
+        im=ax.imshow(grid, cmap='gist_earth', interpolation='nearest')  
+        fig.colorbar(im, orientation='vertical')
+        plt.title('Raster scanning on a '  + str(grid_length) + 'x'+ \
+                  str(grid_length) + ' lattice of probability ' + str(prob))
+    
+    print("Raster_Scan--- %s seconds ---" % (time.time() - start_time))
+    
+    return grid , csize
+
+#-----------------------------------------------------------------------------#
+
+#finds proper label index for grid element
+def find(element,csize):
+
+        if csize[element]>0:
+            
+            return element     
+        
+        if csize[element]<0:       
+            
+            root_reached=False
+            csize_index=-csize[element]
+            
+            while root_reached==False: 
+                
+                root=csize[csize_index]
+                
+                if root>0:               
+                    
+                    root_reached=True     
+                       
+                if root<0:       
+                    
+                    csize_index=-root          
+                 
+            return csize_index
+#-----------------------------------------------------------------------------#
+
+#rescan grid assigning proper labels to grid elements which have temporary
+#labels
+def Collapse(grid,grid_length,csize,plot):
+    
+    start_time = time.time()
+    
+    for row in range(1,grid_length+1):    
+        for column in range(1,grid_length+1):            
+            if grid[row,column]!=0:                   
+                if csize[int(grid[row,column])]<0:  
+                    
+                    root_reached=False
+                    csize_index=-csize[int(grid[row,column])]
+                    
+                    while root_reached==False:       
+                        
+                        root=csize[csize_index] 
+                        
+                        if root>0:                           
+                            grid[row,column]=csize_index
+                            root_reached=True                       
+                        if root<0:                             
+                            csize_index=-root          
+                        
+    if plot==True:                
+        fig, ax = plt.subplots()          
+        im=ax.imshow(grid, cmap='gist_earth', interpolation='nearest')  
+        fig.colorbar(im, orientation='vertical')
+        plt.title('Collapsing the labels on a '  + str(grid_length) + 'x'+ \
+                  str(grid_length) + ' lattice of probability ' + str(prob))
+        
+    print("Collapse--- %s seconds ---" % (time.time() - start_time))
+    
+    return grid
+
+#-----------------------------------------------------------------------------#
+#check if there exists a spanning cluster by comparing elements from 1st row 
+#of grid with last
+def Span_cluster_check(grid):
+    
+    start_time = time.time()
+    span_cluster=False
+    span_value=False                                   
+    compare_edges=np.in1d(grid[1],grid[-2])
+    
+    for element in range(len(compare_edges)):     
+        if compare_edges[element]==True:         
+            if grid[1,element]!=0:
+                
+                span_cluster=True
+                span_value=grid[1,element]  
+                                 
+    print span_cluster, ", Span_cluster_check--- %s seconds ---" % \
+    (time.time() - start_time) 
+    
+    return span_cluster,span_value
+    
+#-----------------------------------------------------------------------------#
+#Run all in sequence
+def run(grid_length,prob):
+    
+    grid=Random_Grid_Generator(grid_length,prob,True)
+    grid,csize=Raster_Scan(grid,grid_length,True)
+    grid=Collapse(grid,grid_length,csize,True)
+    span_check=Span_cluster_check(grid)           
+        
+    return grid,csize,span_check[0]
+
+#-----------------------------------------------------------------------------#
+grid_length=1000
+prob=0.603
+
+simulate=run(grid_length,prob)
